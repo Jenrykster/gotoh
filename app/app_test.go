@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/Jenrykster/gotoh/api"
 )
 
 type ErrorMockReader struct{}
@@ -15,14 +18,21 @@ func (e ErrorMockReader) Read([]byte) (n int, err error) {
 }
 
 func TestInit(t *testing.T) {
-	testString := "Tatami Galaxy\n"
-	selectedAnimeMessage := fmt.Sprintf(endMessage, testString)
+	mockAnimeClient, server := api.NewMockAnimeClient()
+	defer server.Close()
+
+	dummyAnime := AnimeData{
+		Name:        "The Tatami Galaxy",
+		Description: "BlaBlaBla...",
+	}
+
+	selectedAnimeMessage := fmt.Sprintf(endMessage, dummyAnime.Name, dummyAnime.Description)
 
 	t.Run("It returns a message when run", func(t *testing.T) {
-		mockReader := strings.NewReader(testString)
+		mockReader := strings.NewReader("12345" + "\n")
 		mockWriter := &bytes.Buffer{}
 
-		Init(mockWriter, mockReader)
+		Init(mockWriter, mockReader, &mockAnimeClient)
 
 		want := startMessage + selectedAnimeMessage
 		got := mockWriter.String()
@@ -34,16 +44,56 @@ func TestInit(t *testing.T) {
 		mockReader := ErrorMockReader{}
 		mockWriter := &bytes.Buffer{}
 
-		err := Init(mockWriter, mockReader)
+		err := Init(mockWriter, mockReader, &mockAnimeClient)
 
 		expectError(t, err)
+	})
+}
+
+func TestGetAnimeData(t *testing.T) {
+	mockAnimeClient, server := api.NewMockAnimeClient()
+	defer server.Close()
+
+	testId := "7785"
+
+	t.Run("It should return the anime data when a id is passed", func(t *testing.T) {
+		got, err := getAnimeData(testId, &mockAnimeClient)
+		expected := &AnimeData{
+			Name:        "The Tatami Galaxy",
+			Description: "BlaBlaBla...",
+		}
+
+		if err != nil {
+			t.Errorf("Unexpected error: %q", err)
+		}
+
+		if !reflect.DeepEqual(got, expected) {
+			t.Errorf("Expected: %+v\n Got: %+v", expected, got)
+		}
+	})
+}
+
+func TestListAnime(t *testing.T) {
+	mockPaginatedClient, server := api.NewMockPaginatedAnimeClient()
+	defer server.Close()
+	t.Run("It returns a list of animes when a name is passed", func(t *testing.T) {
+		got, err := searchAnimes("Tatami", &mockPaginatedClient)
+		expected := []string{"The Tatami Galaxy", "The Tatami Galaxy Specials"}
+
+		if err != nil {
+			t.Errorf("Unexpected error: %q", err)
+		}
+
+		if !reflect.DeepEqual(got, expected) {
+			t.Errorf("Expected: %+v\n Got: %+v", expected, got)
+		}
 	})
 }
 
 func assertString(t *testing.T, got, want string) {
 	t.Helper()
 	if got != want {
-		t.Errorf("Expected %q but got %q", want, got)
+		t.Errorf("Expected %q \nGot %q", want, got)
 	}
 }
 
