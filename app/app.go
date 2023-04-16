@@ -29,22 +29,9 @@ func Init(w io.Writer, r io.Reader, animeAPI api.AnimeApi) (err error) {
 		fmt.Fprintf(w, "There was an error getting this anime: %s", err.Error())
 	}
 
-	// User is searching by ID
-	if _, err := strconv.Atoi(animeQuery); err == nil {
-		selectedAnime, err := getAnimeData(animeQuery, animeAPI)
-
-		if err != nil {
-			if err.Error() == api.NotFoundError {
-				fmt.Fprint(w, err)
-				return nil
-			} else {
-				fmt.Fprintf(w, "There was an error: %s ", err.Error())
-			}
-			return err
-		}
-		fmt.Fprintf(w, endMessage, selectedAnime.Name, selectedAnime.Description)
-	} else {
-		selectedId, err := selectAnimeFromList(w, r, animeAPI, animeQuery)
+	// User is searching by Name
+	if _, err := strconv.Atoi(animeQuery); err != nil {
+		animeQuery, err = selectAnimeFromList(w, r, animeAPI, animeQuery)
 		if err != nil {
 			if err.Error() == zeroResultsMessage {
 				fmt.Fprint(w, err)
@@ -54,23 +41,59 @@ func Init(w io.Writer, r io.Reader, animeAPI api.AnimeApi) (err error) {
 			}
 			return err
 		}
-		selectedAnime, err := getAnimeData(selectedId, animeAPI)
+
 		if err != nil {
 			fmt.Fprintf(w, "Error: %s", err)
 		}
-		fmt.Fprintf(w, endMessage, selectedAnime.Name, selectedAnime.Description)
 	}
 
+	err = getAnimeData(w, r, animeQuery, animeAPI)
+	if err != nil {
+		fmt.Fprintf(w, "there was an error while updating this entry: %q", err)
+	}
 	return nil
 }
 
-func getAnimeData(id string, animeAPI api.AnimeApi) (anime *api.Anime, err error) {
+func getAnimeData(w io.Writer, r io.Reader, id string, animeAPI api.AnimeApi) (err error) {
 	result, err := animeAPI.GetById(id)
 
 	if err != nil {
-		return nil, err
+		return nil
 	}
-	return result, nil
+	if err != nil {
+		if err.Error() == api.NotFoundError {
+			fmt.Fprint(w, err)
+		} else {
+			fmt.Fprintf(w, "There was an error: %s ", err.Error())
+		}
+		return err
+	}
+
+	fmt.Fprintf(w, endMessage+"\n", result.Name, result.Description)
+
+	in := bufio.NewReader(r)
+	userInput := ""
+
+	var episodeAmount int = -1
+	for err != nil || episodeAmount < 0 || episodeAmount > result.Episodes {
+		if episodeAmount > result.Episodes {
+			fmt.Fprintf(w, "Insert a valid amount (max is %d) and press ENTER: ", result.Episodes)
+		} else {
+			fmt.Fprint(w, "Insert your progress (in episodes) and press ENTER: ")
+		}
+
+		userInput, err = in.ReadString('\n')
+		if err != nil {
+			return err
+		}
+		episodeAmount, err = strconv.Atoi(strings.Split(userInput, "\n")[0])
+	}
+	err = animeAPI.UpdateEpisodeCount(id, episodeAmount, episodeAmount == result.Episodes)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(w, "Success !")
+	return nil
 }
 
 func selectAnimeFromList(w io.Writer, r io.Reader, animeAPI api.AnimeApi, query string) (selectionId string, err error) {

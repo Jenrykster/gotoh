@@ -88,7 +88,7 @@ func convertCodeIntoAccessToken(code string) {
 	}
 
 	if len(post.AccessToken) > 0 {
-		err := os.WriteFile("./.token", []byte(post.AccessToken), 0644)
+		err := os.WriteFile(utils.TOKEN_FILE_PATH, []byte(post.AccessToken), 0644)
 		if err != nil {
 			log.Fatal(err)
 		}

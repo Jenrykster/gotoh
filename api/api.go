@@ -13,8 +13,9 @@ import (
 )
 
 type AnimeEntityData struct {
-	Id    int
-	Title struct {
+	Id       int
+	Episodes int
+	Title    struct {
 		English string
 		Native  string
 	}
@@ -36,11 +37,13 @@ type Anime struct {
 	Id          string
 	Name        string
 	Description string
+	Episodes    int
 }
 
 type AnimeApi interface {
 	ListByName(name string) (*[]Anime, error)
 	GetById(id string) (*Anime, error)
+	UpdateEpisodeCount(id string, episode int, markAsComplete bool) error
 }
 
 type AnimeClient struct {
@@ -52,6 +55,17 @@ const (
 	NotFoundError = "Anime not found"
 )
 
+type AuthRoundTripper struct {
+	token   string
+	Proxied http.RoundTripper
+}
+
+func (art AuthRoundTripper) RoundTrip(req *http.Request) (res *http.Response, e error) {
+	req.Header.Add("Authorization", "Bearer "+art.token)
+	res, e = art.Proxied.RoundTrip(req)
+	return
+}
+
 func newCustomAnimeClient(client *http.Client, url string) AnimeClient {
 	graphqlClient := graphql.NewClient(url, client)
 
@@ -61,8 +75,12 @@ func newCustomAnimeClient(client *http.Client, url string) AnimeClient {
 	}
 }
 
-func NewAnilistClient() AnimeClient {
-	httpClient := &http.Client{Timeout: 10 * time.Second}
+func NewAnilistClient(userToken string) AnimeClient {
+	transporter := AuthRoundTripper{
+		token:   userToken,
+		Proxied: http.DefaultTransport,
+	}
+	httpClient := &http.Client{Timeout: 10 * time.Second, Transport: transporter}
 
 	return newCustomAnimeClient(httpClient, "https://graphql.anilist.co")
 }
@@ -111,6 +129,48 @@ func (a *AnimeClient) ListByName(name string) (*[]Anime, error) {
 	return &animeList, nil
 }
 
+type MediaListStatus string
+
+const (
+	CURRENT   MediaListStatus = "CURRENT"
+	COMPLETED MediaListStatus = "COMPLETED"
+)
+
+type UpdateEpisode struct {
+	SaveMediaListEntry struct {
+		Id       int
+		Status   MediaListStatus
+		Progress int
+	} `graphql:"SaveMediaListEntry(mediaId: $id, status: $status, progress: $progress)"`
+}
+
+func (a *AnimeClient) UpdateEpisodeCount(id string, episode int, markAsCompleted bool) error {
+	convertedId, err := strconv.Atoi(id)
+	if err != nil {
+		return fmt.Errorf("cannot query id: %w", err)
+	}
+
+	var mutation UpdateEpisode
+
+	status := CURRENT
+	if markAsCompleted {
+		status = COMPLETED
+	}
+
+	params := QueryParams{
+		"id":       convertedId,
+		"progress": episode,
+		"status":   status,
+	}
+	err = a.client.Mutate(context.Background(), &mutation, params)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func convertAnilistResponse(raw AnimeEntityData) Anime {
 	var title string
 
@@ -120,5 +180,7 @@ func convertAnilistResponse(raw AnimeEntityData) Anime {
 		title = raw.Title.English
 	}
 
-	return Anime{Id: fmt.Sprint(raw.Id), Name: title, Description: raw.Description}
+	description := strings.ReplaceAll(raw.Description, "<br>", "")
+
+	return Anime{Id: fmt.Sprint(raw.Id), Name: title, Description: description, Episodes: raw.Episodes}
 }
