@@ -104,6 +104,11 @@ func selectAnimeFromList(w io.Writer, r io.Reader, animeAPI api.AnimeApi, query 
 		return "", fmt.Errorf("couldn't display list: %w", err)
 	}
 
+	if len(*animeList) == 1 {
+		selectedAnime := (*animeList)[0]
+		return string(selectedAnime.Id), nil
+	}
+
 	for i, animeName := range *animeList {
 		orderedAnimeList = append(orderedAnimeList, fmt.Sprintf("[%d] %s", i+1, animeName.Name))
 	}
