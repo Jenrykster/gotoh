@@ -10,6 +10,7 @@ import (
 type EnvFields struct {
 	PORT              string
 	ANILIST_CLIENT_ID string
+	ANILIST_SECRET    string
 }
 
 func GetEnv() EnvFields {
@@ -22,7 +23,7 @@ func GetEnv() EnvFields {
 	}
 
 	env.ANILIST_CLIENT_ID = os.Getenv("ANILIST_CLIENT_ID")
-
+	env.ANILIST_SECRET = os.Getenv("ANILIST_SECRET")
 	if envPort := os.Getenv("PORT"); len(envPort) > 0 {
 		env.PORT = envPort
 	} else {

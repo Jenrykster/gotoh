@@ -1,7 +1,9 @@
 package auth
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -9,6 +11,10 @@ import (
 
 	"github.com/Jenrykster/gotoh/utils"
 )
+
+type CodeConversionResponse struct {
+	AccessToken string `json:"access_token"`
+}
 
 const tokenRequest = "https://anilist.co/api/v2/oauth/authorize?client_id=%s&response_type=code"
 
@@ -37,10 +43,7 @@ func openTemporaryServer() {
 			log.Fatal("No code was found, please try again.")
 		} else {
 			fmt.Fprintf(w, "You can close this page now")
-			err := os.WriteFile("./.token", []byte(code), 0644)
-			if err != nil {
-				log.Fatal(err)
-			}
+			convertCodeIntoAccessToken(code)
 			cancel()
 		}
 	})
@@ -52,4 +55,43 @@ func openTemporaryServer() {
 	}()
 
 	<-ctx.Done()
+}
+
+func convertCodeIntoAccessToken(code string) {
+	url := "https://anilist.co/api/v2/oauth/token"
+	body := []byte(fmt.Sprintf(`{
+		"grant_type": "authorization_code",
+		"client_id": "%s",
+		"client_secret": "%s",
+		"code": "%s",
+		"redirect_uri": "http://localhost:%s"
+	}`, env.ANILIST_CLIENT_ID, env.ANILIST_SECRET, code, env.PORT))
+
+	r, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	if err != nil {
+		panic(err)
+	}
+	r.Header.Add("Content-Type", "application/json")
+	r.Header.Add("Accept", "application/json")
+
+	client := &http.Client{}
+	res, err := client.Do(r)
+	if err != nil {
+		panic(err)
+	}
+	defer res.Body.Close()
+
+	var post CodeConversionResponse
+	derr := json.NewDecoder(res.Body).Decode(&post)
+	if derr != nil {
+		panic(derr)
+	}
+
+	if len(post.AccessToken) > 0 {
+		err := os.WriteFile("./.token", []byte(post.AccessToken), 0644)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println("Success !")
+	}
 }
