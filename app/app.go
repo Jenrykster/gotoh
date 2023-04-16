@@ -77,9 +77,9 @@ func getAnimeData(w io.Writer, r io.Reader, id string, animeAPI api.AnimeApi) (e
 	var episodeAmount int = -1
 	for err != nil || episodeAmount < 0 || episodeAmount > result.Episodes {
 		if episodeAmount > result.Episodes {
-			fmt.Fprintf(w, "Insert a valid amount (max is %d) and press ENTER: ", result.Episodes)
+			fmt.Fprintf(w, "Please insert a value between 0-%d and press ENTER: ", result.Episodes)
 		} else {
-			fmt.Fprint(w, "Insert your progress (in episodes) and press ENTER: ")
+			fmt.Fprintf(w, "Insert your progress (max: %d) and press ENTER: ", result.Episodes)
 		}
 
 		userInput, err = in.ReadString('\n')
@@ -88,7 +88,14 @@ func getAnimeData(w io.Writer, r io.Reader, id string, animeAPI api.AnimeApi) (e
 		}
 		episodeAmount, err = strconv.Atoi(strings.Split(userInput, "\n")[0])
 	}
-	err = animeAPI.UpdateEpisodeCount(id, episodeAmount, episodeAmount == result.Episodes)
+
+	hasCompletedTheAnime := episodeAmount == result.Episodes
+
+	if hasCompletedTheAnime {
+		fmt.Fprintln(w, "Setting as completed...")
+	}
+
+	err = animeAPI.UpdateEpisodeCount(id, episodeAmount, hasCompletedTheAnime)
 	if err != nil {
 		return err
 	}
