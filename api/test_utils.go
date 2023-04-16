@@ -12,7 +12,7 @@ const getByIdResponse = `{
 			"title": {
 				"english": "The Tatami Galaxy"	
 			},
-			"description": "BlaBlaBla..."
+			"description": "..."
 		}
 	}
 }`

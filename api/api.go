@@ -1,36 +1,35 @@
 package api
 
 import (
-	"bytes"
-	"encoding/json"
+	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
+
+	"github.com/hasura/go-graphql-client"
 )
 
-type AnilistAnime struct {
-	Id    int `json:"id"`
+type AnimeEntityData struct {
+	Id    int
 	Title struct {
-		English string `json:"english"`
-	} `json:"title"`
-
-	Description string `json:"description"`
+		English string
+		Native  string
+	}
+	Description string
+}
+type AnilistAnime struct {
+	Media AnimeEntityData `graphql:"Media(id: $id)"`
 }
 
-type SuccessResponse struct {
-	Data struct {
-		Media AnilistAnime `json:"Media"`
-	} `json:"data"`
-}
+type QueryParams map[string]interface{}
 
 type PaginatedSuccessResponse struct {
-	Data struct {
-		Page struct {
-			Media []AnilistAnime `json:"media"`
-		} `json:"Page"`
-	} `json:"data"`
+	Page struct {
+		Media []AnimeEntityData `graphql:"media(search: $name, type: ANIME)"`
+	} `graphql:"Page(perPage: 5)"`
 }
 
 type Anime struct {
@@ -45,7 +44,7 @@ type AnimeApi interface {
 }
 
 type AnimeClient struct {
-	client *http.Client
+	client graphql.Client
 	url    string
 }
 
@@ -53,11 +52,11 @@ const (
 	NotFoundError = "Anime not found"
 )
 
-type jsonQuery map[string]string
-
 func newCustomAnimeClient(client *http.Client, url string) AnimeClient {
+	graphqlClient := graphql.NewClient(url, client)
+
 	return AnimeClient{
-		client: client,
+		client: *graphqlClient,
 		url:    url,
 	}
 }
@@ -68,51 +67,24 @@ func NewAnilistClient() AnimeClient {
 	return newCustomAnimeClient(httpClient, "https://graphql.anilist.co")
 }
 
-func (a *AnimeClient) getResource(query jsonQuery, v any) error {
-	jsonValue, _ := json.Marshal(query)
-
-	response, err := a.client.Post(a.url, "application/json", bytes.NewBuffer(jsonValue))
-	if err != nil || response.StatusCode != http.StatusOK {
-		if response.StatusCode == http.StatusNotFound {
-			return fmt.Errorf(NotFoundError)
-		}
-		return fmt.Errorf("there was an error during the request, %v", response.StatusCode)
-	}
-
-	data, err := io.ReadAll(response.Body)
-	defer response.Body.Close()
-
-	if err != nil {
-		return errors.New("couldn't read the response")
-	}
-
-	unMarshalError := json.Unmarshal(data, v)
-
-	if unMarshalError != nil {
-		return errors.New("error during unmarshal process")
-	}
-
-	return nil
-}
-
 func (a *AnimeClient) GetById(id string) (anime *Anime, err error) {
 	if len(id) < 1 {
 		return nil, errors.New("no id provided")
 	}
 
-	query := jsonQuery{
-		"query":     "query($id: Int){Media(id: $id, type: ANIME){id title{english} description}}",
-		"variables": fmt.Sprintf(`{"id": %s}`, id),
+	convertedId, err := strconv.Atoi(id)
+	if err != nil {
+		return nil, fmt.Errorf("cannot query id: %w", err)
 	}
 
-	var parsedResponse SuccessResponse
-	error := a.getResource(query, &parsedResponse)
-
+	var response AnilistAnime
+	params := QueryParams{"id": convertedId}
+	error := a.client.Query(context.Background(), &response, params)
 	if error != nil {
 		return nil, error
 	}
 
-	selectedAnime := convertAnilistResponse(parsedResponse.Data.Media)
+	selectedAnime := convertAnilistResponse(response.Media)
 
 	return &selectedAnime, nil
 }
@@ -122,27 +94,31 @@ func (a *AnimeClient) ListByName(name string) (*[]Anime, error) {
 		return nil, errors.New("no name provided")
 	}
 
-	query := jsonQuery{
-		"query":     "query($name: String){Page(perPage: 5){media(search: $name, type: ANIME){id title{english} description}}}",
-		"variables": fmt.Sprintf(`{"name": "%s"}`, name),
-	}
-
 	var parsedResponse PaginatedSuccessResponse
-	error := a.getResource(query, &parsedResponse)
 
+	params := QueryParams{"name": name}
+	error := a.client.Query(context.Background(), &parsedResponse, params)
 	if error != nil {
 		return nil, error
 	}
 
 	animeList := []Anime{}
 
-	for _, e := range parsedResponse.Data.Page.Media {
+	for _, e := range parsedResponse.Page.Media {
 		animeList = append(animeList, convertAnilistResponse(e))
 	}
 
 	return &animeList, nil
 }
 
-func convertAnilistResponse(raw AnilistAnime) Anime {
-	return Anime{Id: fmt.Sprint(raw.Id), Name: raw.Title.English, Description: raw.Description}
+func convertAnilistResponse(raw AnimeEntityData) Anime {
+	var title string
+
+	if len(strings.Trim(raw.Title.English, " ")) == 0 {
+		title = raw.Title.Native
+	} else {
+		title = raw.Title.English
+	}
+
+	return Anime{Id: fmt.Sprint(raw.Id), Name: title, Description: raw.Description}
 }
