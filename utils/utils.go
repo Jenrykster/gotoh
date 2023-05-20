@@ -31,7 +31,7 @@ func GetEnv() EnvFields {
 	token, err := os.ReadFile(TOKEN_FILE_PATH)
 
 	if err != nil {
-		if !strings.Contains(err.Error(), "no such file or directory") {
+		if strings.Contains(err.Error(), "no such file or directory") {
 			env.USER_TOKEN = ""
 		} else {
 			log.Fatalf("Couldn't read token %q", err)
