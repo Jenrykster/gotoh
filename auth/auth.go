@@ -1,9 +1,7 @@
 package auth
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -16,7 +14,7 @@ type CodeConversionResponse struct {
 	AccessToken string `json:"access_token"`
 }
 
-const tokenRequest = "https://anilist.co/api/v2/oauth/authorize?client_id=%s&response_type=code"
+const tokenRequest = "https://anilist.co/api/v2/oauth/authorize?client_id=%s&response_type=token"
 
 var env = utils.GetEnv()
 
@@ -36,14 +34,17 @@ func openTemporaryServer() {
 		Handler: mux,
 	}
 
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/parseToken/", http.StripPrefix("/parseToken/", http.FileServer(http.Dir("./html/"))))
+
+	mux.HandleFunc("/saveToken", func(w http.ResponseWriter, r *http.Request) {
 		values := r.URL.Query()
-		code := values.Get("code")
+		code := values.Get("access_token")
 		if len(code) == 0 {
+			fmt.Println("There was an error while saving your token")
 			log.Fatal("No code was found, please try again.")
 		} else {
 			fmt.Fprintf(w, "You can close this page now")
-			convertCodeIntoAccessToken(code)
+			saveAccessToken(code)
 			cancel()
 		}
 	})
@@ -57,38 +58,9 @@ func openTemporaryServer() {
 	<-ctx.Done()
 }
 
-func convertCodeIntoAccessToken(code string) {
-	url := "https://anilist.co/api/v2/oauth/token"
-	body := []byte(fmt.Sprintf(`{
-		"grant_type": "authorization_code",
-		"client_id": "%s",
-		"client_secret": "%s",
-		"code": "%s",
-		"redirect_uri": "http://localhost:%s"
-	}`, env.ANILIST_CLIENT_ID, env.ANILIST_SECRET, code, env.PORT))
-
-	r, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
-	if err != nil {
-		panic(err)
-	}
-	r.Header.Add("Content-Type", "application/json")
-	r.Header.Add("Accept", "application/json")
-
-	client := &http.Client{}
-	res, err := client.Do(r)
-	if err != nil {
-		panic(err)
-	}
-	defer res.Body.Close()
-
-	var post CodeConversionResponse
-	derr := json.NewDecoder(res.Body).Decode(&post)
-	if derr != nil {
-		panic(derr)
-	}
-
-	if len(post.AccessToken) > 0 {
-		err := os.WriteFile(utils.TOKEN_FILE_PATH, []byte(post.AccessToken), 0644)
+func saveAccessToken(code string) {
+	if len(code) > 0 {
+		err := os.WriteFile(utils.TOKEN_FILE_PATH, []byte(code), 0644)
 		if err != nil {
 			log.Fatal(err)
 		}

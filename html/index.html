@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>Gotoh</title>
+
+</head>
+
+<body>
+  Working...
+  <script>
+    const body = document.body
+    let tokenData = window.location.hash
+    console.log(tokenData)
+    if (!tokenData.includes("access_token")) {
+      body.textContent = "Couldn't find your token :("
+    } else {
+      const unfragmentedQuery = tokenData.slice(1)
+      window.location.replace("/saveToken?" + unfragmentedQuery)
+    }
+  </script>
+</body>
+
+</html>

@@ -13,7 +13,6 @@ const TOKEN_FILE_PATH = "./.token"
 type EnvFields struct {
 	PORT              string
 	ANILIST_CLIENT_ID string
-	ANILIST_SECRET    string
 	USER_TOKEN        string
 }
 
@@ -27,7 +26,6 @@ func GetEnv() EnvFields {
 	}
 
 	env.ANILIST_CLIENT_ID = os.Getenv("ANILIST_CLIENT_ID")
-	env.ANILIST_SECRET = os.Getenv("ANILIST_SECRET")
 	token, err := os.ReadFile(TOKEN_FILE_PATH)
 
 	if err != nil {
